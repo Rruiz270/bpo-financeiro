@@ -1,63 +1,25 @@
 'use client'
 
 import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import * as z from 'zod'
-
-const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
-  password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
-})
-
-type LoginFormData = z.infer<typeof loginSchema>
+import { useParams } from 'next/navigation'
 
 export default function TenantLoginPage() {
   const params = useParams()
-  const router = useRouter()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-  })
-
-  const onSubmit = async (data: LoginFormData) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     setIsLoading(true)
     setError('')
 
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-Slug': params.tenant as string,
-        },
-        body: JSON.stringify(data),
-      })
-
-      if (!response.ok) {
-        throw new Error('Credenciais inválidas')
-      }
-
-      const { token, user } = await response.json()
-      
-      // Store token (you might want to use a more secure method)
-      localStorage.setItem('auth_token', token)
-      localStorage.setItem('tenant_slug', params.tenant as string)
-      
-      // Redirect to dashboard
-      router.push(`/dashboard/${params.tenant}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao fazer login')
-    } finally {
+    // For now, just show a success message
+    setTimeout(() => {
       setIsLoading(false)
-    }
+      alert('Login functionality will be implemented soon!')
+    }, 1000)
   }
 
   return (
@@ -72,38 +34,38 @@ export default function TenantLoginPage() {
           </p>
         </div>
         
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
-          <div className="rounded-md shadow-sm -space-y-px">
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <div className="rounded-md shadow-sm space-y-4">
             <div>
-              <label htmlFor="email" className="sr-only">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email
               </label>
               <input
-                {...register('email')}
+                id="email"
+                name="email"
                 type="email"
-                autoComplete="email"
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                placeholder="Digite seu email"
               />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-              )}
             </div>
             
             <div>
-              <label htmlFor="password" className="sr-only">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Senha
               </label>
               <input
-                {...register('password')}
+                id="password"
+                name="password"
                 type="password"
-                autoComplete="current-password"
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Senha"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                placeholder="Digite sua senha"
               />
-              {errors.password && (
-                <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
-              )}
             </div>
           </div>
 
@@ -123,6 +85,12 @@ export default function TenantLoginPage() {
             </button>
           </div>
         </form>
+
+        <div className="text-center">
+          <p className="text-sm text-gray-500">
+            Sistema em desenvolvimento
+          </p>
+        </div>
       </div>
     </div>
   )
