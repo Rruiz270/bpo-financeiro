@@ -1,6 +1,7 @@
 {
-  "buildCommand": "turbo run build",
+  "buildCommand": "cd apps/web && npm run build",
   "installCommand": "npm install",
   "framework": null,
-  "outputDirectory": "apps/web/.next"
+  "outputDirectory": "apps/web/.next",
+  "rootDirectory": "."
 }

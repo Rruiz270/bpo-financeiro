@@ -1,0 +1,29 @@
+{
+  "name": "bpo-financeiro",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "db:migrate": "cd packages/database && npx prisma migrate dev",
+    "db:generate": "cd packages/database && npx prisma generate",
+    "db:seed": "cd packages/database && npx tsx seed.ts",
+    "db:migrate:deploy": "cd packages/database && npx prisma migrate deploy",
+    "vercel-build": "npm run db:generate && npm run build"
+  },
+  "devDependencies": {
+    "turbo": "^1.11.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
