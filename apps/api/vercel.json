@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "dist/main.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "dist/main.js"
+    }
+  ],
+  "env": {
+    "DATABASE_POOL_URL": "@database_pool_url",
+    "JWT_SECRET": "@jwt_secret",
+    "REDIS_URL": "@redis_url",
+    "NODE_ENV": "production"
+  }
+}

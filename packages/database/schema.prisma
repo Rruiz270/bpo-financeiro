@@ -1,0 +1,581 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_POOL_URL") // Use pooled connection for queries
+  directUrl = env("DATABASE_URL")      // Use direct connection for migrations
+}
+
+// =====================================================
+// CORE MODELS
+// =====================================================
+
+model Tenant {
+  id               String   @id @default(uuid())
+  slug             String   @unique
+  companyName      String   @map("company_name")
+  tradeName        String?  @map("trade_name")
+  cnpj             String   @unique
+  stateRegistration String? @map("state_registration")
+  cityRegistration  String? @map("city_registration")
+  address          Json?
+  contactInfo      Json?    @map("contact_info")
+  dominioApiKey    String?  @map("dominio_api_key")
+  dominioCompanyId String?  @map("dominio_company_id")
+  subscriptionPlan String   @default("basic") @map("subscription_plan")
+  subscriptionStatus String @default("active") @map("subscription_status")
+  settings         Json     @default("{}") @db.JsonB
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  users              UserTenant[]
+  suppliers          Supplier[]
+  customers          Customer[]
+  accountsPayable    AccountsPayable[]
+  accountsReceivable AccountsReceivable[]
+  bankAccounts       BankAccount[]
+  cashFlowEntries    CashFlowEntry[]
+  categories         Category[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  fullName     String    @map("full_name")
+  cpf          String?
+  phone        String?
+  avatarUrl    String?   @map("avatar_url")
+  isSuperAdmin Boolean   @default(false) @map("is_super_admin")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenants UserTenant[]
+
+  @@map("users")
+}
+
+model UserTenant {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  tenantId    String   @map("tenant_id")
+  role        String   @default("operator")
+  permissions Json     @default("[]") @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdBy   String?  @map("created_by")
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@map("user_tenants")
+}
+
+// =====================================================
+// ACCOUNTS PAYABLE MODULE
+// =====================================================
+
+model Supplier {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  supplierType     String   @default("company") @map("supplier_type")
+  cnpjCpf          String   @map("cnpj_cpf")
+  name             String
+  tradeName        String?  @map("trade_name")
+  stateRegistration String? @map("state_registration")
+  cityRegistration String?  @map("city_registration")
+  address          Json?    @db.JsonB
+  contactInfo      Json?    @map("contact_info") @db.JsonB
+  bankAccounts     Json     @default("[]") @map("bank_accounts") @db.JsonB
+  paymentTerms     Int      @default(30) @map("payment_terms")
+  notes            String?  @db.Text
+  tags             String[] @default([])
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payables        AccountsPayable[]
+  invoices        PurchaseInvoice[]
+
+  @@unique([tenantId, cnpjCpf])
+  @@index([tenantId, isActive])
+  @@map("suppliers")
+}
+
+model PurchaseInvoice {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  supplierId    String?  @map("supplier_id")
+  invoiceNumber String   @map("invoice_number")
+  series        String?
+  nfeKey        String?  @unique @map("nfe_key")
+  issueDate     DateTime @map("issue_date")
+  entryDate     DateTime @default(now()) @map("entry_date")
+  totalAmount   Decimal  @map("total_amount") @db.Decimal(15, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  netAmount     Decimal  @map("net_amount") @db.Decimal(15, 2)
+  taxDetails    Json?    @map("tax_details") @db.JsonB
+  invoiceType   String?  @map("invoice_type")
+  xmlContent    String?  @map("xml_content") @db.Text
+  pdfUrl        String?  @map("pdf_url")
+  status        String   @default("pending_approval")
+  createdAt     DateTime @default(now()) @map("created_at")
+  createdBy     String?  @map("created_by")
+
+  // Relations
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  payables AccountsPayable[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, issueDate])
+  @@map("purchase_invoices")
+}
+
+model AccountsPayable {
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  supplierId        String    @map("supplier_id")
+  purchaseInvoiceId String?   @map("purchase_invoice_id")
+  
+  // Document info
+  documentType      String    @map("document_type")
+  documentNumber    String?   @map("document_number")
+  description       String    @db.Text
+  
+  // Values
+  originalAmount    Decimal   @map("original_amount") @db.Decimal(15, 2)
+  feesAmount        Decimal   @default(0) @map("fees_amount") @db.Decimal(15, 2)
+  discountAmount    Decimal   @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  paidAmount        Decimal   @default(0) @map("paid_amount") @db.Decimal(15, 2)
+  
+  // Dates
+  issueDate         DateTime? @map("issue_date")
+  dueDate           DateTime  @map("due_date")
+  paymentDate       DateTime? @map("payment_date")
+  
+  // Payment info
+  paymentMethod     String?   @map("payment_method")
+  bankAccountId     String?   @map("bank_account_id")
+  installments      Int       @default(1)
+  installmentNumber Int?      @map("installment_number")
+  parentPayableId   String?   @map("parent_payable_id")
+  
+  // Control
+  costCenterId      String?   @map("cost_center_id")
+  projectId         String?   @map("project_id")
+  approvalStatus    String    @default("pending") @map("approval_status")
+  approvalWorkflow  Json      @default("[]") @map("approval_workflow") @db.JsonB
+  paymentStatus     String    @default("pending") @map("payment_status")
+  
+  // Additional
+  notes             String?   @db.Text
+  tags              String[]  @default([])
+  attachments       Json      @default("[]") @db.JsonB
+  
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdBy         String?   @map("created_by")
+  updatedBy         String?   @map("updated_by")
+
+  // Relations
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier        Supplier         @relation(fields: [supplierId], references: [id])
+  purchaseInvoice PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
+
+  @@index([tenantId, paymentStatus])
+  @@index([tenantId, dueDate])
+  @@index([tenantId, supplierId])
+  @@map("accounts_payable")
+}
+
+// =====================================================
+// ACCOUNTS RECEIVABLE MODULE
+// =====================================================
+
+model Customer {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  customerType     String   @default("company") @map("customer_type")
+  cnpjCpf          String   @map("cnpj_cpf")
+  name             String
+  tradeName        String?  @map("trade_name")
+  address          Json?    @db.JsonB
+  contactInfo      Json?    @map("contact_info") @db.JsonB
+  
+  // Credit info
+  creditLimit      Decimal  @default(0) @map("credit_limit") @db.Decimal(15, 2)
+  creditUsed       Decimal  @default(0) @map("credit_used") @db.Decimal(15, 2)
+  paymentTerms     Int      @default(30) @map("payment_terms")
+  
+  // Collections info
+  collectionStatus String   @default("normal") @map("collection_status")
+  lastPurchaseDate DateTime? @map("last_purchase_date")
+  totalPurchases   Decimal  @default(0) @map("total_purchases") @db.Decimal(15, 2)
+  
+  notes            String?  @db.Text
+  tags             String[] @default([])
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receivables AccountsReceivable[]
+  invoices    SalesInvoice[]
+
+  @@unique([tenantId, cnpjCpf])
+  @@index([tenantId, isActive])
+  @@map("customers")
+}
+
+model SalesInvoice {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  customerId      String   @map("customer_id")
+  
+  // Invoice data
+  invoiceNumber   String   @map("invoice_number")
+  series          String?
+  nfeKey          String?  @unique @map("nfe_key")
+  rpsNumber       String?  @map("rps_number")
+  
+  // Values
+  servicesAmount  Decimal  @default(0) @map("services_amount") @db.Decimal(15, 2)
+  productsAmount  Decimal  @default(0) @map("products_amount") @db.Decimal(15, 2)
+  discountAmount  Decimal  @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  totalAmount     Decimal  @map("total_amount") @db.Decimal(15, 2)
+  taxDetails      Json?    @map("tax_details") @db.JsonB
+  
+  // Dates and status
+  issueDate       DateTime @map("issue_date")
+  competenceDate  DateTime? @map("competence_date")
+  status          String   @default("draft")
+  cancellationReason String? @map("cancellation_reason") @db.Text
+  
+  // Files
+  xmlContent      String?  @map("xml_content") @db.Text
+  pdfUrl          String?  @map("pdf_url")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  createdBy       String?  @map("created_by")
+  sentAt          DateTime? @map("sent_at")
+
+  // Relations
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer    Customer             @relation(fields: [customerId], references: [id])
+  receivables AccountsReceivable[]
+
+  @@unique([tenantId, invoiceNumber, series])
+  @@index([tenantId, status])
+  @@index([tenantId, issueDate])
+  @@map("sales_invoices")
+}
+
+model AccountsReceivable {
+  id                   String    @id @default(uuid())
+  tenantId             String    @map("tenant_id")
+  customerId           String    @map("customer_id")
+  salesInvoiceId       String?   @map("sales_invoice_id")
+  
+  // Document info
+  documentType         String    @map("document_type")
+  documentNumber       String?   @map("document_number")
+  description          String    @db.Text
+  
+  // Values
+  originalAmount       Decimal   @map("original_amount") @db.Decimal(15, 2)
+  feesAmount           Decimal   @default(0) @map("fees_amount") @db.Decimal(15, 2)
+  discountAmount       Decimal   @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  receivedAmount       Decimal   @default(0) @map("received_amount") @db.Decimal(15, 2)
+  
+  // Dates
+  issueDate            DateTime  @map("issue_date")
+  dueDate              DateTime  @map("due_date")
+  paymentDate          DateTime? @map("payment_date")
+  
+  // Payment info
+  paymentMethod        String?   @map("payment_method")
+  bankSlipId           String?   @map("bank_slip_id")
+  pixQrCode            String?   @map("pix_qr_code") @db.Text
+  installments         Int       @default(1)
+  installmentNumber    Int?      @map("installment_number")
+  parentReceivableId   String?   @map("parent_receivable_id")
+  
+  // Collection status
+  collectionStatus     String    @default("pending") @map("collection_status")
+  collectionActions    Json      @default("[]") @map("collection_actions") @db.JsonB
+  protestStatus        String?   @map("protest_status")
+  
+  notes                String?   @db.Text
+  tags                 String[]  @default([])
+  
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  createdBy            String?   @map("created_by")
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  salesInvoice SalesInvoice? @relation(fields: [salesInvoiceId], references: [id])
+  bankSlip     BankSlip?     @relation(fields: [bankSlipId], references: [id])
+
+  @@index([tenantId, collectionStatus])
+  @@index([tenantId, dueDate])
+  @@index([tenantId, customerId])
+  @@map("accounts_receivable")
+}
+
+model BankSlip {
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  bankAccountId    String    @map("bank_account_id")
+  
+  // Boleto info
+  ourNumber        String    @map("our_number")
+  bankSlipNumber   String?   @map("bank_slip_number")
+  barCode          String?   @map("bar_code")
+  digitableLine    String?   @map("digitable_line")
+  
+  // Values and dates
+  amount           Decimal   @map("amount") @db.Decimal(15, 2)
+  issueDate        DateTime  @map("issue_date")
+  dueDate          DateTime  @map("due_date")
+  paidDate         DateTime? @map("paid_date")
+  paidAmount       Decimal?  @map("paid_amount") @db.Decimal(15, 2)
+  
+  // Bank return
+  occurrenceCode   String?   @map("occurrence_code")
+  occurrenceDesc   String?   @map("occurrence_description") @db.Text
+  bankFee          Decimal?  @map("bank_fee") @db.Decimal(15, 2)
+  
+  // Files and status
+  pdfUrl           String?   @map("pdf_url")
+  status           String    @default("issued")
+  
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+  receivables AccountsReceivable[]
+
+  @@index([tenantId, status])
+  @@index([ourNumber])
+  @@map("bank_slips")
+}
+
+// =====================================================
+// TREASURY MODULE
+// =====================================================
+
+model BankAccount {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  
+  // Bank info
+  bankCode          String   @map("bank_code")
+  bankName          String   @map("bank_name")
+  agencyNumber      String   @map("agency_number")
+  agencyDigit       String?  @map("agency_digit")
+  accountNumber     String   @map("account_number")
+  accountDigit      String?  @map("account_digit")
+  accountType       String   @map("account_type")
+  
+  // Integration
+  apiCredentials    Json?    @map("api_credentials") @db.JsonB
+  syncEnabled       Boolean  @default(false) @map("sync_enabled")
+  lastSyncAt        DateTime? @map("last_sync_at")
+  
+  // Balance
+  currentBalance    Decimal  @default(0) @map("current_balance") @db.Decimal(15, 2)
+  availableBalance  Decimal  @default(0) @map("available_balance") @db.Decimal(15, 2)
+  blockedBalance    Decimal  @default(0) @map("blocked_balance") @db.Decimal(15, 2)
+  
+  // Config
+  isMainAccount     Boolean  @default(false) @map("is_main_account")
+  description       String?
+  tags              String[] @default([])
+  isActive          Boolean  @default(true) @map("is_active")
+  
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashFlowEntries CashFlowEntry[]
+  bankSlips       BankSlip[]
+  statements      BankStatement[]
+
+  @@index([tenantId, isActive])
+  @@map("bank_accounts")
+}
+
+model CashFlowEntry {
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  bankAccountId       String    @map("bank_account_id")
+  
+  // Transaction info
+  entryDate           DateTime  @map("entry_date")
+  competenceDate      DateTime? @map("competence_date")
+  description         String    @db.Text
+  
+  // Values
+  entryType           String    @map("entry_type") // inflow, outflow
+  amount              Decimal   @map("amount") @db.Decimal(15, 2)
+  balanceBefore       Decimal?  @map("balance_before") @db.Decimal(15, 2)
+  balanceAfter        Decimal?  @map("balance_after") @db.Decimal(15, 2)
+  
+  // Classification
+  categoryId          String?   @map("category_id")
+  subcategoryId       String?   @map("subcategory_id")
+  costCenterId        String?   @map("cost_center_id")
+  projectId           String?   @map("project_id")
+  
+  // Reference
+  referenceType       String?   @map("reference_type")
+  referenceId         String?   @map("reference_id")
+  
+  // Reconciliation
+  isReconciled        Boolean   @default(false) @map("is_reconciled")
+  reconciliationDate  DateTime? @map("reconciliation_date")
+  bankTransactionId   String?   @map("bank_transaction_id")
+  
+  notes               String?   @db.Text
+  attachments         Json      @default("[]") @db.JsonB
+  
+  createdAt           DateTime  @default(now()) @map("created_at")
+  createdBy           String?   @map("created_by")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+  category    Category?   @relation(fields: [categoryId], references: [id])
+
+  @@index([tenantId, entryDate])
+  @@index([tenantId, bankAccountId])
+  @@index([tenantId, isReconciled])
+  @@map("cash_flow_entries")
+}
+
+// =====================================================
+// BANK RECONCILIATION MODULE
+// =====================================================
+
+model BankStatement {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  bankAccountId    String   @map("bank_account_id")
+  
+  // Statement info
+  statementDate    DateTime @map("statement_date")
+  beginningBalance Decimal  @map("beginning_balance") @db.Decimal(15, 2)
+  endingBalance    Decimal  @map("ending_balance") @db.Decimal(15, 2)
+  
+  // Import info
+  importType       String?  @map("import_type")
+  importFileUrl    String?  @map("import_file_url")
+  importedAt       DateTime @default(now()) @map("imported_at")
+  importedBy       String?  @map("imported_by")
+  
+  // Reconciliation status
+  totalTransactions Int     @default(0) @map("total_transactions")
+  reconciledTrans   Int     @default(0) @map("reconciled_transactions")
+  pendingTrans      Int     @default(0) @map("pending_transactions")
+  isClosed          Boolean @default(false) @map("is_closed")
+
+  // Relations
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankAccount  BankAccount        @relation(fields: [bankAccountId], references: [id])
+  transactions BankTransaction[]
+
+  @@unique([bankAccountId, statementDate])
+  @@index([tenantId, statementDate])
+  @@map("bank_statements")
+}
+
+model BankTransaction {
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  bankStatementId   String    @map("bank_statement_id")
+  bankAccountId     String    @map("bank_account_id")
+  
+  // Transaction data
+  transactionDate   DateTime  @map("transaction_date")
+  postingDate       DateTime? @map("posting_date")
+  description       String    @db.Text
+  documentNumber    String?   @map("document_number")
+  
+  // Values
+  transactionType   String    @map("transaction_type") // credit, debit
+  amount            Decimal   @map("amount") @db.Decimal(15, 2)
+  balance           Decimal?  @map("balance") @db.Decimal(15, 2)
+  
+  // Bank info
+  bankCode          String?   @map("bank_code")
+  transactionCode   String?   @map("transaction_code")
+  
+  // Reconciliation
+  reconciliationStatus String    @default("pending") @map("reconciliation_status")
+  cashFlowEntryId   String?   @map("cash_flow_entry_id")
+  reconciledAt      DateTime? @map("reconciled_at")
+  reconciledBy      String?   @map("reconciled_by")
+  
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankStatement BankStatement @relation(fields: [bankStatementId], references: [id])
+  bankAccount   BankAccount   @relation(fields: [bankAccountId], references: [id])
+
+  @@index([tenantId, transactionDate])
+  @@index([tenantId, reconciliationStatus])
+  @@map("bank_transactions")
+}
+
+// =====================================================
+// SUPPORTING MODELS
+// =====================================================
+
+model Category {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  categoryType String   @map("category_type")
+  parentId     String?  @map("parent_id")
+  
+  code         String?
+  name         String
+  description  String?  @db.Text
+  
+  // Hierarchy
+  path         String?  @db.Text
+  level        Int      @default(0)
+  
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent          Category?       @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children        Category[]      @relation("CategoryHierarchy")
+  cashFlowEntries CashFlowEntry[]
+
+  @@unique([tenantId, categoryType, code])
+  @@index([tenantId, categoryType])
+  @@map("categories")
+}
