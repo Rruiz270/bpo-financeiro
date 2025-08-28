@@ -1,0 +1,9 @@
+{
+  "name": "@bpo-financeiro/ui",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'UI build'"
+  }
+}

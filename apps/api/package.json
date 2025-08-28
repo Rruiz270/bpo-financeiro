@@ -1,0 +1,10 @@
+{
+  "name": "@bpo-financeiro/api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'API dev'",
+    "build": "echo 'API build'",
+    "start": "echo 'API start'"
+  }
+}
